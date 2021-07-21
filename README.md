@@ -1,4 +1,4 @@
-# SQLServer-Framework
+# SQLServer-ORM-Framework
 
 my english are bad btw, so sorry if you didn't understand 
 
