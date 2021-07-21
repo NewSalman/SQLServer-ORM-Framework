@@ -14,31 +14,40 @@ using System.Buffers;
 
 namespace Database.Lazy
 {
-    public class Database
+    public class Database<T> : IDatabase<T>
     {
-        private readonly SqlConnection _db;
-        //private IEnumerable<string> _data;
+        private SqlConnection _db;
 
+        public string ConnectionStrings { get; set; }
+
+        private List<T> _data { get; set; }
         public Database()
         {
-            _db = new SqlConnection("Server=(localdb)\\mssqllocaldb;Database=MyInstagram;Trusted_Connection=True;MultipleActiveResultSets=true");
+
+        }
+
+        public void Init()
+        {
+            _db = new SqlConnection(ConnectionStrings);
             _db.Open();
         }
 
 
-        public Task<List<T>> GetAllItem<T>(string TableName)
+        public Task<List<T>> GetAllItem(string TableName)
         {
             string QueryString = $"SELECT * FROM dbo.{TableName}";
 
-            var result = ExecuteCommand<List<T>>(_db, QueryString, null);
+            var result = ExecuteCommand(_db, QueryString, null);
 
-
+            Task.Run(async () =>
+            {
+                _data = await ExecuteCommand(_db, QueryString, null);
+            });
             return result;
         }
 
-        private Task<T> ExecuteCommand<T>(SqlConnection connection, string queryString, string[] parameter)
+        private Task<List<T>> ExecuteCommand(SqlConnection connection, string queryString, string[] parameter)
         {
-            Type itemType = typeof(T).GetGenericArguments()[0];
 
             StringBuilder cols = new StringBuilder();
 
@@ -50,8 +59,7 @@ namespace Database.Lazy
                     DataTable table = new DataTable();
                     data.Fill(table);
 
-                    PropertyInfo[] properties = itemType.GetProperties();
-                    T result = default(T);
+                    List<T> result = default(List<T>);
 
                     DataRowCollection row = table.Rows;
                     DataColumnCollection col = table.Columns;
@@ -60,7 +68,6 @@ namespace Database.Lazy
 
                     for (int x = 0; x < row.Count; x++)
                     {
-                        //Console.WriteLine(row[x].ToString());
                         cols.Append("{\n");
                         for (int i = 0; i < col.Count; i++)
                         {
@@ -96,15 +103,15 @@ namespace Database.Lazy
                     }
                     cols.Append("]");
 
-                    result = JsonSerializer.Deserialize<T>(cols.ToString());
+                    result = JsonSerializer.Deserialize<List<T>>(cols.ToString());
 
-                    return Task.FromResult(default(T));
+                    return Task.FromResult(result);
                 }
             }
             catch (JsonException jx)
             {
                 Console.WriteLine(jx.Message);
-                return Task.FromResult(default(T));
+                return Task.FromResult(default(List<T>));
             }
         }
 

@@ -5,10 +5,17 @@ using System.Threading.Tasks;
 
 namespace Database.Lazy
 {
-    public interface IDatabase : IDisposable
+    public interface IDatabase<T> : IDisposable
     {
+        string ConnectionStrings { get; set; }
 
-        Task<IEnumerable<string>> GetAllItem(string TableName);
+        void Init();
+
+        Task<List<T>> GetAllItem(string TableName);
+
+        Task<T> GetItem(string ColumnName, string parameter);
+        Task<T> UpdateItem(string ColumnName, string parameter);
+        Task<T> DeleteItem(string ColumnName, string parameter);
 
     }
 }
