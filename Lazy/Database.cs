@@ -75,8 +75,7 @@ namespace Database.Lazy
             for (int i = 0; i < Result.Count; i++)
             {
                 string itemProperty = GetPropertyValue(Result[i], By);
-                if(itemProperty.ToLower() == parameter.ToLower()) {
-                    Console.WriteLine(itemProperty);
+                if(itemProperty.ToLower().Contains(parameter.ToLower())) {
                     resultItem.Add(Result[i]);
                 }
 
