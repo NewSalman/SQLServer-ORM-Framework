@@ -1,4 +1,6 @@
-﻿using System.Reflection;
+﻿using System.Xml.Linq;
+using System.ComponentModel;
+using System.Reflection;
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -18,32 +20,107 @@ namespace Database.Lazy
     {
         private SqlConnection _db;
 
-        public string ConnectionStrings { get; set; }
+        private string ConnectionStrings { get; set; }
 
-        private List<T> _data { get; set; }
-        public Database()
+        private string TableName { get; set; }
+
+        private StringBuilder _data { get; set; }
+
+        private IList<T> Result { get; set; }
+
+        public Database(string tableName, string connectionStrings)
         {
-
+            this.ConnectionStrings = connectionStrings;
+            this.TableName = tableName;
         }
 
-        public void Init()
+
+        public async Task Init()
         {
+
             _db = new SqlConnection(ConnectionStrings);
             _db.Open();
+
+            Result = await ExecuteCommand(_db, $"SELECT * FROM dbo.{TableName}", null);
+
         }
 
 
-        public Task<List<T>> GetAllItem(string TableName)
+        public Task<List<T>> GetAllItem()
         {
-            string QueryString = $"SELECT * FROM dbo.{TableName}";
+            return Task.FromResult(Result.ToList());
+        }
 
-            var result = ExecuteCommand(_db, QueryString, null);
+        public Task<T> GetItemByID(string id)
+        {
+            T resultItem = default(T);
 
-            Task.Run(async () =>
+            for (int i = 0; i < Result.Count; i++)
             {
-                _data = await ExecuteCommand(_db, QueryString, null);
-            });
-            return result;
+                string itemProperty = GetPropertyValue(Result[i], "ID");
+                if (itemProperty == id)
+                {
+                    resultItem = Result[i];
+                    break;
+                }
+            }
+
+            return Task.FromResult(resultItem);
+        }
+
+        public Task<List<T>> GetItemBy(string parameter, string By)
+        {
+            List<T> resultItem = new List<T>();
+
+            for (int i = 0; i < Result.Count; i++)
+            {
+                string itemProperty = GetPropertyValue(Result[i], By);
+                if(itemProperty.ToLower() == parameter.ToLower()) {
+                    Console.WriteLine(itemProperty);
+                    resultItem.Add(Result[i]);
+                }
+
+            }
+            return Task.FromResult(resultItem);
+        }
+        public Task UpdateItem(T ItemToUpdate)
+        {
+            // Type item = ItemToUpdate.GetType();
+
+            // Task[] tasks = new Task[] { };
+
+            // Task OnList = new Task(() =>
+            // {
+            //     T itemToUpdate = _data.Where( != id)
+            //     if (itemToUpdate == null)
+            //     {
+            //         throw new ArgumentNullException("item is null");
+            //     }
+
+            //     Console.WriteLine(ItemId);
+
+            // });
+
+            // Task OnDB = new Task(() =>
+            // {
+
+            // });
+
+            // tasks.Append(OnList);
+            // tasks.Append(OnDB);
+
+            // await Task.WhenAll(tasks);
+
+            throw new NotImplementedException();
+
+        }
+        public Task<T> DeleteItem(string ColumnName, string parameter)
+        {
+            throw new NotImplementedException();
+        }
+        public Task<List<T>> GetItemBy(string ColumnName, string[] paramter)
+        {
+            throw new NotImplementedException();
         }
 
         private Task<List<T>> ExecuteCommand(SqlConnection connection, string queryString, string[] parameter)
@@ -103,6 +180,8 @@ namespace Database.Lazy
                     }
                     cols.Append("]");
 
+                    _data = cols;
+
                     result = JsonSerializer.Deserialize<List<T>>(cols.ToString());
 
                     return Task.FromResult(result);
@@ -115,9 +194,17 @@ namespace Database.Lazy
             }
         }
 
+        private string GetPropertyValue(object obj, string PropertyName)
+        {
+            Type type = obj.GetType();
+
+            return type.GetProperty(PropertyName).GetValue(obj).ToString();
+        }
+
 
         public void Dispose()
         {
+            //Result.Clear();
             _db.Close();
         }
 

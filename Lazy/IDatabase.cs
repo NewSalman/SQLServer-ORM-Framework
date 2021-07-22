@@ -7,15 +7,11 @@ namespace Database.Lazy
 {
     public interface IDatabase<T> : IDisposable
     {
-        string ConnectionStrings { get; set; }
-
-        void Init();
-
-        Task<List<T>> GetAllItem(string TableName);
-
-        Task<T> GetItem(string ColumnName, string parameter);
-        Task<T> UpdateItem(string ColumnName, string parameter);
+        Task Init();
+        Task<List<T>> GetAllItem();
+        Task<T> GetItemByID(string id);
+        Task<List<T>> GetItemBy(string parameter, string ColumnName);
+        Task UpdateItem(T ItemToUpdate);
         Task<T> DeleteItem(string ColumnName, string parameter);
-
     }
 }
