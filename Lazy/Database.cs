@@ -13,10 +13,11 @@ using System.Text.Json.Serialization;
 using System.Diagnostics;
 using System.Buffers.Text;
 using System.Buffers;
+using System.Collections.ObjectModel;
 
 namespace Database.Lazy
 {
-    public class Database<T> : IDatabase<T>
+    public class Database<T> : IDatabase<T> where T : new()
     {
         private SqlConnection _db;
 
@@ -27,6 +28,8 @@ namespace Database.Lazy
         private StringBuilder _data { get; set; }
 
         private IList<T> Result { get; set; }
+
+        //private IList<T> _result { get; set;}
 
         public Database(string tableName, string connectionStrings)
         {
@@ -41,30 +44,37 @@ namespace Database.Lazy
             _db = new SqlConnection(ConnectionStrings);
             _db.Open();
 
-            Result = await ExecuteCommand(_db, $"SELECT * FROM dbo.{TableName}", null);
+            await UpdateDB();
 
         }
 
 
+        private async Task UpdateDB() {
+            Result = await ExecuteCommand(_db, $"SELECT * FROM dbo.{TableName}", null);
+        }
+
         public Task<List<T>> GetAllItem()
         {
-            return Task.FromResult(Result.ToList());
+            List<T> _result = new List<T>();
+
+            _result.AddRange(Result);
+
+            return Task.FromResult(_result);
         }
 
         public Task<T> GetItemByID(string id)
         {
             T resultItem = default(T);
-
-            for (int i = 0; i < Result.Count; i++)
+            for(int i = 0; i < Result.Count; i++) 
             {
-                string itemProperty = GetPropertyValue(Result[i], "ID");
-                if (itemProperty == id)
+                if(GetPropertyValue(Result[i], "ID").ToString() == id) 
                 {
-                    resultItem = Result[i];
-                    break;
-                }
-            }
+                    resultItem = SetValueObj(Result[i]);
 
+                    break;
+                } 
+            }
+            
             return Task.FromResult(resultItem);
         }
 
@@ -74,9 +84,11 @@ namespace Database.Lazy
 
             for (int i = 0; i < Result.Count; i++)
             {
-                string itemProperty = GetPropertyValue(Result[i], By);
+                string itemProperty = GetPropertyValue(Result[i], By).ToString();
                 if(itemProperty.ToLower().Contains(parameter.ToLower())) {
-                    resultItem.Add(Result[i]);
+
+                    
+                    resultItem.Add(SetValueObj(Result[i]));
                 }
 
             }
@@ -84,34 +96,37 @@ namespace Database.Lazy
         }
         public Task UpdateItem(T ItemToUpdate)
         {
-            // Type item = ItemToUpdate.GetType();
+            Type item = ItemToUpdate.GetType();
 
-            // Task[] tasks = new Task[] { };
+            List<Task> tasks = new List<Task>();
 
-            // Task OnList = new Task(() =>
-            // {
-            //     T itemToUpdate = _data.Where( != id)
-            //     if (itemToUpdate == null)
-            //     {
-            //         throw new ArgumentNullException("item is null");
-            //     }
+            Task OnList = new Task(() =>
+            {
+                object itemId = GetPropertyValue(ItemToUpdate, "ID").ToString();
+                for(int i = 0; i < Result.Count; i++) {
+                    object itemResult = GetPropertyValue(Result[i], "ID");
+                    if(itemResult == itemId) {
+                        Result.Remove(Result[i]);
 
-            //     Console.WriteLine(ItemId);
+                        Result.Add(ItemToUpdate);
 
-            // });
+                        break;
+                    }
+                }
 
-            // Task OnDB = new Task(() =>
-            // {
+            });
 
-            // });
+            Task OnDB = new Task(async () =>
+            {
+                await UpdateDB();
+            });
 
-            // tasks.Append(OnList);
-            // tasks.Append(OnDB);
+            tasks.Append(OnList);
+            tasks.Append(OnDB);
 
-            // await Task.WhenAll(tasks);
+            Task.WhenAll(tasks);
 
-            throw new NotImplementedException();
-
+            return Task.CompletedTask;
         }
         public Task<T> DeleteItem(string ColumnName, string parameter)
         {
@@ -193,13 +208,31 @@ namespace Database.Lazy
             }
         }
 
-        private string GetPropertyValue(object obj, string PropertyName)
+        private object GetPropertyValue(object obj, string PropertyName)
         {
             Type type = obj.GetType();
 
-            return type.GetProperty(PropertyName).GetValue(obj).ToString();
+            return type.GetProperty(PropertyName).GetValue(obj);
         }
 
+        private void SetValueProperty(object obj, string PropertyName, string value) {
+            Type type = obj.GetType();
+
+            Type propertyInfos = obj.GetType().GetProperty("ID").GetType();
+            type.GetProperty(PropertyName).SetValue(obj,Convert.ChangeType(value, propertyInfos));
+        }
+
+        private T SetValueObj(object Obj) {
+            T item = new T();
+
+            var properties = item.GetType().GetProperties();
+
+            for(int x = 0; x < properties.Length; x++) {
+                properties[x].SetValue(item, GetPropertyValue(Obj, properties[x].ToString().Split(' ')[1]));
+            }
+
+            return item;
+        }
 
         public void Dispose()
         {
