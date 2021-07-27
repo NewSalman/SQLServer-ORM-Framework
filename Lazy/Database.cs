@@ -25,13 +25,7 @@ namespace Database.Lazy
 
         private string TableName { get; set; }
 
-        private StringBuilder _data { get; set; }
-
-        //private DataSet table { get; set; }
-
         private IList<T> Result { get; set; }
-
-        //private IList<T> _result { get; set;}
 
         public Database(string tableName, string connectionStrings)
         {
@@ -52,6 +46,7 @@ namespace Database.Lazy
 
 
         private async Task UpdateDB() {
+            Result.Clear();
             Result = await ExecuteCommand(_db, $"SELECT * FROM dbo.{TableName}", null);
         }
         
@@ -287,8 +282,6 @@ namespace Database.Lazy
                         cols.Append("},\n");
                     }
                     cols.Append("]");
-
-                    _data = cols;
 
                     result = JsonSerializer.Deserialize<List<T>>(cols.ToString());
 
