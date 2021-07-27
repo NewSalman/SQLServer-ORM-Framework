@@ -27,6 +27,8 @@ namespace Database.Lazy
 
         private StringBuilder _data { get; set; }
 
+        //private DataSet table { get; set; }
+
         private IList<T> Result { get; set; }
 
         //private IList<T> _result { get; set;}
@@ -51,6 +53,10 @@ namespace Database.Lazy
 
         private async Task UpdateDB() {
             Result = await ExecuteCommand(_db, $"SELECT * FROM dbo.{TableName}", null);
+        }
+        
+        public Task AddItem(T item) {
+            throw new NotImplementedException();
         }
 
         public Task<List<T>> GetAllItem()
@@ -94,37 +100,112 @@ namespace Database.Lazy
             }
             return Task.FromResult(resultItem);
         }
-        public Task UpdateItem(T ItemToUpdate)
+        public Task UpdateItem(string id,T ItemToUpdate)
         {
-            Type item = ItemToUpdate.GetType();
+            Type itemType = ItemToUpdate.GetType();
 
-            List<Task> tasks = new List<Task>();
+            PropertyInfo[] properties = itemType.GetProperties();
 
-            Task OnList = new Task(() =>
+            if(string.IsNullOrEmpty(id) || ItemToUpdate == null) {
+                throw new ArgumentNullException("Id or item cannot be null");
+            }
+
+            StringBuilder parameterValue = new StringBuilder();
+            StringBuilder ExcludedItem = new StringBuilder();
+            
+            
+            for(int i = 0; i < properties.Length; i++) {
+                string propname = properties[i].ToString().Split(' ')[1];
+                var propAttr = properties[i].GetCustomAttributes().ToArray();
+                for(int x = 0; x < propAttr.Length; x++) {
+                    if(propAttr[x].ToString() == nameof(PrimaryKey)
+                    || propAttr[x].ToString() == nameof(ForeignKey)) {
+                        ExcludedItem.Append(propname + ' ');
+                    }
+                }
+            }
+
+            string[] Excluded = ExcludedItem.ToString().Split(' ');
+            for(int i = 0; i < properties.Length; i++) {
+                string propname = properties[i].ToString().Split(' ')[1];
+                
+                if(Excluded.Contains(propname)) {
+                    continue;
+                }
+
+                parameterValue.Append($"{propname} = @{propname}Value,");
+            }
+
+            string stringResult = $"UPDATE dbo.{TableName} SET {parameterValue.ToString()}, WHERE ID = '{id}'";
+
+            string[] splitted = stringResult.Split(",,");
+
+            StringBuilder QueryUpdate = new StringBuilder();
+
+
+            QueryUpdate.Append(splitted[0] + ' ');
+            QueryUpdate.Append(splitted[1]);
+
+
+            Console.WriteLine(QueryUpdate.ToString());
+            using (SqlCommand command = new SqlCommand(QueryUpdate.ToString(), _db))
             {
-                object itemId = GetPropertyValue(ItemToUpdate, "ID").ToString();
-                for(int i = 0; i < Result.Count; i++) {
-                    object itemResult = GetPropertyValue(Result[i], "ID");
-                    if(itemResult == itemId) {
-                        Result.Remove(Result[i]);
 
-                        Result.Add(ItemToUpdate);
+                for (int i = 0; i < properties.Length; i++)
+                {
 
-                        break;
+                    string[] propname = properties[i].ToString().Split(' ');
+
+                    if (Excluded.Contains(propname[1]))
+                    {
+                        continue;
+                    }
+
+                    string parameterFormat = $"@{propname[1]}Value";
+
+                    switch (propname[0])
+                    {
+                        case "System.String":
+                            try
+                            {
+                                DateTime toDate = DateTime.Parse(GetPropertyValue(ItemToUpdate, propname[1]).ToString());
+                                SqlParameter dateParam = command.Parameters.Add(parameterFormat, SqlDbType.DateTime);
+                                dateParam.Value = toDate;
+                            }
+                            catch (FormatException)
+                            {
+                                string stringValue = GetPropertyValue(ItemToUpdate, propname[1]).ToString();
+                                SqlParameter stringParam = command.Parameters.Add(parameterFormat, SqlDbType.NVarChar);
+                                stringParam.Value = stringValue;
+                            }
+                            break;
+
+                        case "Int32":
+                            int intValue = (int)GetPropertyValue(ItemToUpdate, propname[1]);
+                            SqlParameter intParam = command.Parameters.Add(parameterFormat, SqlDbType.Int);
+                            intParam.Value = intValue;
+                            break;
                     }
                 }
 
-            });
+                Task.Run(async () =>
+                {
+                    try
+                    {
+                        int rowAf = await command.ExecuteNonQueryAsync();
+                        await UpdateDB();
+                        Console.WriteLine("Rows Affected: " + rowAf);
+                    }
+                    catch (Exception e)
+                    {
+                        Console.WriteLine(e.Message);
+                        throw e;
+                    }
 
-            Task OnDB = new Task(async () =>
-            {
-                await UpdateDB();
-            });
+                });
 
-            tasks.Append(OnList);
-            tasks.Append(OnDB);
 
-            Task.WhenAll(tasks);
+            }
 
             return Task.CompletedTask;
         }
@@ -132,9 +213,22 @@ namespace Database.Lazy
         {
             throw new NotImplementedException();
         }
-        public Task<List<T>> GetItemBy(string ColumnName, string[] paramter)
-        {
-            throw new NotImplementedException();
+
+        private object GetAttribObject(PropertyInfo property, Type AttribType) {
+            object result = null;
+            PropertyInfo properties = property;
+            
+            object[] attr = properties.GetCustomAttributes().ToArray();
+
+            for(int x = 0; x < attr.Length; x++) {
+                if(attr[x].GetType() == AttribType) {
+                    result = attr[x];
+                    break;
+                }
+            }
+            if(result == null) throw new ArgumentNullException("Attribute not found");
+
+            return result;
         }
 
         private Task<List<T>> ExecuteCommand(SqlConnection connection, string queryString, string[] parameter)
@@ -223,7 +317,7 @@ namespace Database.Lazy
         }
 
         private T SetValueObj(object Obj) {
-            T item = new T();
+            T item =  new T();//default(T);
 
             var properties = item.GetType().GetProperties();
 
