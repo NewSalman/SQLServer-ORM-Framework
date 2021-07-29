@@ -13,6 +13,6 @@ namespace Database.Lazy
         Task<T> GetItemByID(string id);
         Task<List<T>> GetItemBy(string parameter, string ColumnName);
         Task UpdateItem(string id,T ItemToUpdate);
-        Task<T> DeleteItem(string ColumnName, string parameter);
+        Task DeleteItem(string ID);
     }
 }

@@ -1,6 +1,4 @@
-﻿using System.Xml.Linq;
-using System.ComponentModel;
-using System.Reflection;
+﻿using System.Reflection;
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -9,11 +7,7 @@ using System.Data.SqlClient;
 using System.Data;
 using System.Linq;
 using System.Text.Json;
-using System.Text.Json.Serialization;
-using System.Diagnostics;
-using System.Buffers.Text;
 using System.Buffers;
-using System.Collections.ObjectModel;
 
 namespace Database.Lazy
 {
@@ -46,12 +40,92 @@ namespace Database.Lazy
 
 
         private async Task UpdateDB() {
-            Result.Clear();
+            Result = new List<T>();
             Result = await ExecuteCommand(_db, $"SELECT * FROM dbo.{TableName}", null);
         }
         
         public Task AddItem(T item) {
-            throw new NotImplementedException();
+            Type itemType = item.GetType();
+            PropertyInfo[] properties = itemType.GetProperties();
+
+            StringBuilder QueryInsert = new StringBuilder();
+            StringBuilder ColumnName = new StringBuilder();
+            StringBuilder Column = new StringBuilder();
+
+            ColumnName.Append("(");
+            Column.Append("(");
+
+            Console.WriteLine(QueryInsert.ToString());
+            for (int i = 0; i < properties.Length; i++)
+            {
+                string propname = properties[i].Name;
+                string propType = properties[i].ToString().Split(' ')[0];
+                if (properties[i].Name == properties[properties.Length - 1].Name)
+                {
+                    ColumnName.Append($"{propname}");
+                    Column.Append($"\"@{propname}Value\"");
+                    break;
+                }
+
+                    ColumnName.Append($"{propname},");
+                    Column.Append($"\"@{propname}Value\",");
+            }
+            ColumnName.Append(") VALUES ");
+            Column.Append(");");
+            QueryInsert.Append($"INSERT INTO dbo.{TableName} ");
+            QueryInsert.Append(ColumnName);
+            QueryInsert.Append(Column);
+            Console.WriteLine(QueryInsert.ToString());
+
+            using (SqlCommand cmd = new SqlCommand(QueryInsert.ToString(), _db))
+            {
+                for (int i = 0; i < properties.Length; i++)
+                {
+                    string[] PropType = properties[i].ToString().Split(' ');
+
+                    switch (PropType[0])
+                    {
+                        case "System.String":
+                            try
+                            {
+                                DateTime DateValue = DateTime.Parse(GetPropertyValue(item, PropType[1]).ToString());
+                                var DateParam = cmd.Parameters.Add($"@{PropType}Value", SqlDbType.DateTime);
+                                DateParam.Value = DateValue;
+                            }
+                            catch (FormatException)
+                            {
+                                string StringValue = GetPropertyValue(item, PropType[1]).ToString();
+                                var StringParam = cmd.Parameters.Add($"@{PropType}Value", SqlDbType.VarChar);
+                                StringParam.Value = StringValue;
+                            }
+                            break;
+
+                        case "Int32":
+                            int IntValue = (int)GetPropertyValue(item, PropType[1]);
+                            var IntParam = cmd.Parameters.Add($"@{PropType}Value", SqlDbType.Int);
+                            IntParam.Value = IntValue;
+                            break;
+                    }
+                }
+
+                Task.Run(async () =>
+                {
+                    try
+                    {
+                        Console.WriteLine("Task running");
+                        int rowAff = await cmd.ExecuteNonQueryAsync();
+                        Console.WriteLine("Row affected: ", +rowAff);
+                        await UpdateDB();
+                    }
+                    catch (Exception e)
+                    {
+                        Console.WriteLine(e.Message);
+                        throw e;
+                    }
+                });
+            }
+
+            return Task.CompletedTask;
         }
 
         public Task<List<T>> GetAllItem()
@@ -204,9 +278,21 @@ namespace Database.Lazy
 
             return Task.CompletedTask;
         }
-        public Task<T> DeleteItem(string ColumnName, string parameter)
+        public Task DeleteItem(string ID)
         {
-            throw new NotImplementedException();
+            string QueryDelete = $"DELETE dbo.{TableName} WHERE ID = '{ID}'";
+            using (SqlCommand cmd = new SqlCommand(QueryDelete, _db))
+            {
+                
+                Task.Run(async () =>
+                {
+                    int rowafft = await cmd.ExecuteNonQueryAsync();
+                    Console.WriteLine("Row Affected: " + rowafft);
+                    await UpdateDB();
+                });
+            }
+
+            return Task.CompletedTask;
         }
 
         private object GetAttribObject(PropertyInfo property, Type AttribType) {
